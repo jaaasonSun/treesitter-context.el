@@ -77,7 +77,7 @@ If nil, show context only when the outmost parent is invisible."
   :safe 'integerp
   :group 'treesitter-context)
 
-(defcustom treesitter-context-frame-min-height 5
+(defcustom treesitter-context-frame-min-height 0
   "Minimal height of the child frame."
   :version "29.1"
   :type 'integer
@@ -103,13 +103,13 @@ If nil, show context only when the outmost parent is invisible."
 (defvar treesitter-context--indent-level 0
   "Indent level used to generate context information.")
 
-(defvar treesitter-context-background-color "#000000"
+(defvar treesitter-context-background-color "#1d1f21"
   "Background color for treesitter-context posframe")
 
 (defvar treesitter-context-border-color "#FFFFFF"
   "Border color for treesitter-context posframe")
 
-(defvar treesitter-context-border-width 1
+(defvar treesitter-context-border-width 0
   "Border width for treesitter-context posframe")
 
 (defvar-local treesitter-context--refresh-timer nil
@@ -139,39 +139,46 @@ See `posframe-show' for more infor about hidehandler and INFO ."
   (let ((extra (max 0 (- len (length s)))))
     (concat s (make-string extra ?\s))))
 
+(defun treesitter-context-poshandler (info)
+    (cons (+ (plist-get info :parent-window-left)
+             (* (frame-char-width) (+ (fringe-columns 'left)
+                                      (car (window-margins)))))
+          (plist-get info :parent-window-top)))
+
 (defun treesitter-context--show-context ()
   "Show context in a child frame."
   (let* ((buffer (get-buffer-create treesitter-context--buffer-name))
          (contexts treesitter-context--context-list)
          (bg-mode (frame-parameter nil 'background-mode))
-         (max-line-no 0)
          (prefix-len 0)
          (line-no-prefix "")
          (blank-prefix "")
-         (padding "  ")
+         (padding " ")
          (font-height (face-attribute 'default :height))
-         first-line-p)
-    (when treesitter-context-show-line-number
-      (cl-dolist (context contexts)
-        (when (> (car context) max-line-no)
-          (setq max-line-no (car context))))
-      (setq prefix-len (length (format "%s" max-line-no)))
+         first-line-p
+         (line-count 1)
+         (linum-width (line-number-display-width))
+         visible-pos)
+    (when (> linum-width 0)
+      (setq prefix-len (1+ linum-width))
       (setq blank-prefix (make-string prefix-len ?\s)))
     (with-current-buffer buffer
       (erase-buffer)
       (goto-char (point-min))
-      (if treesitter-context-show-line-number
+      (if (> linum-width 0)
           (progn
             (cl-dolist (context contexts)
               (setq first-line-p t)
               (cl-dolist (line (cdr context))
+                (setq line-count (1+ line-count))
                 (if first-line-p
                     (progn
-                      (insert (concat (treesitter-context--string-pad-left (format "%s" (car context)) prefix-len) padding line))
+                      (insert (concat (propertize (treesitter-context--string-pad-left (format "%s" (car context)) prefix-len) 'face 'line-number) padding line))
                       (setq first-line-p nil))
                   (insert (concat blank-prefix padding line))))))
         (cl-dolist (context contexts)
           (cl-dolist (line (cdr context))
+            (setq line-count (1+ line-count))
             (insert line)))))
     (when (and font-height
                treesitter-context-frame-font-fraction
@@ -179,19 +186,23 @@ See `posframe-show' for more infor about hidehandler and INFO ."
       (setq treesitter-context-frame-font nil)
       (setq font-height (round (* font-height treesitter-context-frame-font-fraction))))
     (setq treesitter-context--child-frame (posframe-show buffer
-                                                         :poshandler #'posframe-poshandler-window-top-right-corner
+                                                         :poshandler #'treesitter-context-poshandler
                                                          :font treesitter-context-frame-font
                                                          :border-width treesitter-context-border-width
                                                          :background-color treesitter-context-background-color
                                                          :internal-border-color treesitter-context-border-color
                                                          :internal-border-width treesitter-context-border-width
-                                                         :min-width (min (max treesitter-context-frame-min-width (/ (window-width) 2)) (window-width))
+                                                         :min-width (window-width)
                                                          :min-height treesitter-context-frame-min-height
                                                          :accept-focus nil
                                                          :hidehandler #'treesitter-context--posframe-hidehandler-when-buffer-change
-                                                         :timeout treesitter-context-frame-autohide-timeout))
+                                                         :timeout treesitter-context-frame-autohide-timeout
+                                                         :lines-truncate t
+                                                         :override-parameters '((alpha-background . 100))))
     (when font-height
-      (set-face-attribute 'default treesitter-context--child-frame :height font-height)))
+      (set-face-attribute 'default treesitter-context--child-frame :height font-height))
+    (setq visible-pos (save-excursion (goto-char (window-start)) (forward-line line-count) (point)))
+    (while (< (point) visible-pos) (next-line)))
   nil)
 
 (defun treesitter-context--refresh-context ()
@@ -201,7 +212,9 @@ See `posframe-show' for more infor about hidehandler and INFO ."
     (setq treesitter-context--context-list nil)
     (ignore-errors
       (setq treesitter-context--context-list (treesitter-context-collect-contexts))
-      (treesitter-context--show-context))))
+      (if (length> treesitter-context--context-list 0)
+          (treesitter-context--show-context)
+        (treesitter-context--hide-frame)))))
 
 (defun treesitter-context--refresh-when-idle ()
   (when treesitter-context--refresh-timer

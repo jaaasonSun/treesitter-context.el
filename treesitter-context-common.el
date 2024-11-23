@@ -31,12 +31,12 @@ ALPHA is a number between 0.0 and 1.0 which corresponds to the influence of C1 o
             (round (+ (* x alpha) (* y (- 1 alpha)))))
           (color-values c1) (color-values c2))))
 
-(defun treesitter-context--parent-nodes (node-types)
-  "Get the parent nodes whose node type is in NODE-TYPES."
+(defun treesitter-context--parent-nodes (node-types point)
+  "Get the parent nodes whose node type is in NODE-TYPES from POINT."
   (unless (or (minibufferp)
               (equal (buffer-name) treesitter-context--buffer-name))
     (ignore-errors
-      (let ((node (treesit-node-at (point)))
+      (let ((node (treesit-node-at point))
             node-type parents)
         (while node
           (setq node-type (treesit-node-type node))
@@ -127,57 +127,63 @@ The car of the pair is context, and the cdr is context.end."
   "Collect all of current node's parent nodes with node-type in NODE-TYPES.
 Use QUERY-PATTERNS to capture potential nodes.
 Each node is indented according to INDENT-OFFSET."
-  (let* ((parents (treesitter-context--parent-nodes node-types))
-         (root (nth 0 parents))
-         root-start
-         groups
-         node-pairs
-         context
+  (let* ((point (window-start))
+         (current-line 0)
+         (line-count 0)
          contexts)
-    (when root
-      (setq treesitter-context--indent-level 0)
-      (setq root-start (treesit-node-start root))
-      (when (or treesitter-context-show-context-always
-                (> (window-start) root-start))
-        (setq groups (treesitter-context--capture root query-patterns (treesit-node-start root) (1+ (point))))
-        (when groups
-          (setq node-pairs (seq-filter (lambda (group) (member (cdr (nth 0 group)) parents)) groups))
-          (when node-pairs
-            (let (context
-                  context.real
-                  context.end
-                  len
-                  start-pos
-                  end-pos
-                  line-no)
-              (save-excursion
-                (save-restriction
-                  (widen)
-                  (cl-dolist (np node-pairs)
-                    (setq len (length np))
-                    (cond
-                     ((= len 1)
-                      (setq context (cdr (nth 0 np)))
-                      (setq start-pos (treesit-node-start context)
-                            end-pos (treesit-node-end context)
-                            line-no (line-number-at-pos start-pos))
-                      (cl-pushnew (cons line-no (treesitter-context-indent-context context (buffer-substring start-pos end-pos) treesitter-context--indent-level indent-offset)) contexts))
-                     ((= len 2)
-                      (setq context (cdr (nth 0 np))
-                            context.end (cdr (nth 1 np)))
-                      (setq start-pos (treesit-node-start context)
-                            end-pos (treesit-node-start context.end)
-                            line-no (line-number-at-pos start-pos))
-                      (cl-pushnew (cons line-no (treesitter-context-indent-context context (buffer-substring start-pos end-pos) treesitter-context--indent-level indent-offset)) contexts))
-                     ((= len 3)
-                      (setq context (cdr (nth 0 np))
-                            context.real (cdr (nth 1 np))
-                            context.end (cdr (nth 2 np)))
-                      (setq start-pos (treesit-node-start context.real)
-                            end-pos (treesit-node-start context.end)
-                            line-no (line-number-at-pos start-pos))
-                      (cl-pushnew (cons line-no (treesitter-context-indent-context context.real (buffer-substring start-pos end-pos) treesitter-context--indent-level indent-offset)) contexts)))
-                    (setq treesitter-context--indent-level (1+ treesitter-context--indent-level))))))))))
+    (while (and (< current-line 10) (not (< line-count current-line)))
+      (setq contexts nil
+            line-count 0)
+      (let* ((parents (treesitter-context--parent-nodes node-types point))
+             (root (nth 0 parents))
+             root-start
+             groups
+             node-pairs
+             context)
+        (when root
+          (setq treesitter-context--indent-level 0)
+          (setq root-start (treesit-node-start root))
+          (when (or treesitter-context-show-context-always
+                    (> (window-start) root-start))
+            (setq groups (treesitter-context--capture root query-patterns (treesit-node-start root) (1+ (point))))
+            (when groups
+              (setq node-pairs (seq-filter (lambda (group) (member (cdr (nth 0 group)) parents)) groups))
+              (when node-pairs
+                (let (context
+                      context.real
+                      len
+                      start-pos
+                      end-pos
+                      visible-pos
+                      line-no
+                      (old-line-no -1)
+                      ctx-string)
+                  (save-excursion
+                    (save-restriction
+                      (widen)
+                      (cl-dolist (np node-pairs)
+                        (setq len (length np))
+                        (setq context (cdr (nth 0 np))
+                              start-pos (treesit-node-start context)
+                              line-no (line-number-at-pos start-pos))
+                        (cond
+                         ((or (= len 1) (= len 2))
+                          (save-excursion (goto-char start-pos) (setq start-pos (line-beginning-position)) (setq end-pos (line-end-position))))
+                         ((= len 3)
+                          (setq context.real (cdr (nth 1 np))
+                                context context.real
+                                end-pos (treesit-node-start context))
+                          (save-excursion (goto-char end-pos) (setq start-pos (line-beginning-position))
+                                          (goto-char end-pos) (setq end-pos (line-end-position)))))
+                        (setq visible-pos (save-excursion (goto-char point) (forward-line) (point)))
+                        (unless (or (>= start-pos visible-pos) (eq old-line-no line-no))
+                          (setq ctx-string (buffer-substring start-pos end-pos))
+                          (setq line-count (+ line-count (length (split-string ctx-string "\n"))))
+                          (cl-pushnew (cons line-no (treesitter-context-indent-context context ctx-string treesitter-context--indent-level indent-offset)) contexts)
+                          (setq old-line-no line-no))
+                        )))))))))
+      (setq point (save-excursion (goto-char point) (forward-line) (point)))
+      (setq current-line (1+ current-line)))
     (nreverse contexts)))
 
 (cl-defgeneric treesitter-context-collect-contexts ()

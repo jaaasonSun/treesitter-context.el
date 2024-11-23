@@ -13,7 +13,7 @@
                                 (function_definition body: (_) @context.end) @context
                                 (for_statement (compound_statement) @context.end) @context
                                 (if_statement consequence: (_) @context.end) @context
-                                (else_clause (_) @context.end) @context
+                                (else_clause) @context
                                 (while_statement body: (_) @context.end) @context
                                 (do_statement body: (_) @context.end) @context
                                 (switch_statement body: (_) @context.end) @context
