@@ -151,35 +151,35 @@ See `posframe-show' for more infor about hidehandler and INFO ."
          (contexts treesitter-context--context-list)
          (bg-mode (frame-parameter nil 'background-mode))
          (prefix-len 0)
-         (line-no-prefix "")
          (blank-prefix "")
          (padding " ")
          (font-height (face-attribute 'default :height))
          first-line-p
          (line-count 1)
          (linum-width (line-number-display-width))
-         visible-pos)
+         visible-pos
+         (width (window-width)))
     (when (> linum-width 0)
       (setq prefix-len (1+ linum-width))
       (setq blank-prefix (make-string prefix-len ?\s)))
     (with-current-buffer buffer
       (erase-buffer)
       (goto-char (point-min))
-      (if (> linum-width 0)
-          (progn
-            (cl-dolist (context contexts)
-              (setq first-line-p t)
-              (cl-dolist (line (cdr context))
-                (setq line-count (1+ line-count))
-                (if first-line-p
-                    (progn
-                      (insert (concat (propertize (treesitter-context--string-pad-left (format "%s" (car context)) prefix-len) 'face 'line-number) padding line))
-                      (setq first-line-p nil))
-                  (insert (concat blank-prefix padding line))))))
-        (cl-dolist (context contexts)
-          (cl-dolist (line (cdr context))
-            (setq line-count (1+ line-count))
-            (insert line)))))
+      (cl-dolist (context contexts)
+        (setq first-line-p t)
+        (cl-dolist (line (cdr context))
+          (setq line-count (1+ line-count))
+          (if (> linum-width 0)
+              (if first-line-p
+                  (setq line (concat (propertize (treesitter-context--string-pad-left (format "%s" (car context)) prefix-len) 'face 'line-number) padding line))
+                (setq line (concat blank-prefix padding line))))
+          (setq first-line-p nil)
+          (if (length> line width)
+              (setq line (concat (substring line 0 width) "\n")))
+          (insert line)))
+      (goto-char (point-max))
+      (backward-char)
+      (add-face-text-property (line-beginning-position) (point-max) `(:underline (:color ,(face-foreground 'shadow) :position t) :extend t)))
     (when (and font-height
                treesitter-context-frame-font-fraction
                (> treesitter-context-frame-font-fraction 0.0))
@@ -196,9 +196,7 @@ See `posframe-show' for more infor about hidehandler and INFO ."
                                                          :min-height treesitter-context-frame-min-height
                                                          :accept-focus nil
                                                          :hidehandler #'treesitter-context--posframe-hidehandler-when-buffer-change
-                                                         :timeout treesitter-context-frame-autohide-timeout
-                                                         :lines-truncate t
-                                                         :override-parameters '((alpha-background . 100))))
+                                                         :timeout treesitter-context-frame-autohide-timeout))
     (when font-height
       (set-face-attribute 'default treesitter-context--child-frame :height font-height))
     (setq visible-pos (save-excursion (goto-char (window-start)) (forward-line line-count) (point)))
@@ -211,10 +209,12 @@ See `posframe-show' for more infor about hidehandler and INFO ."
               (equal (buffer-name) treesitter-context--buffer-name))
     (setq treesitter-context--context-list nil)
     (ignore-errors
-      (setq treesitter-context--context-list (treesitter-context-collect-contexts))
-      (if (length> treesitter-context--context-list 0)
-          (treesitter-context--show-context)
-        (treesitter-context--hide-frame)))))
+      (if (eq 1 (window-start))
+          (treesitter-context--hide-frame)
+        (setq treesitter-context--context-list (treesitter-context-collect-contexts))
+        (if (length= treesitter-context--context-list 0)
+            (treesitter-context--hide-frame)
+          (treesitter-context--show-context))))))
 
 (defun treesitter-context--refresh-when-idle ()
   (when treesitter-context--refresh-timer

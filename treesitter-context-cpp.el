@@ -10,10 +10,12 @@
                                 (preproc_if (_) (_) @context.end) @context
                                 (preproc_ifdef name: (identifier) :anchor (_) @context.end) @context
                                 (preproc_else (_) @context.end) @context
-                                (function_definition body: (_) @context.end) @context
+                                (function_definition declarator: (function_declarator) @context.real body: (_) @context.end) @context
+                                (function_definition declarator: (pointer_declarator declarator: (_) @context.real) body: (_) @context.end) @context
+                                (function_definition declarator: (reference_declarator (_) @context.real) body: (_) @context.end) @context
                                 (for_statement (compound_statement) @context.end) @context
                                 (if_statement consequence: (_) @context.end) @context
-                                (else_clause) @context
+                                (else_clause (_) @context.end) @context
                                 (while_statement body: (_) @context.end) @context
                                 (do_statement body: (_) @context.end) @context
                                 (switch_statement body: (_) @context.end) @context
@@ -34,13 +36,8 @@
   (treesitter-context-collect-contexts-base treesitter-context--c++-node-types treesitter-context--c++-query treesitter-context-frame-indent-offset))
 
 (cl-defmethod treesitter-context-indent-context (node context indent-level indent-offset &context (major-mode c++-ts-mode))
-  (let ((node-type (treesit-node-type node)))
-    (if (member node-type '("elif_clause" "else_clause"))
-        (progn
-          (setq treesitter-context--indent-level (- indent-level 1))
-          (treesitter-context--indent-context context treesitter-context--indent-level indent-offset))
-      (setq treesitter-context--indent-level indent-level)
-      (treesitter-context--indent-context context treesitter-context--indent-level indent-offset))))
+  (setq treesitter-context--indent-level 0)
+  (treesitter-context--indent-context context 0 indent-offset))
 
 ;;; focus
 (defconst treesitter-context--c++-focus-node-types '("preproc_if" "preproc_ifdef" "preproc_else" "function_definition" "for_statement" "if_statement" "else_clause" "while_statement" "do_statement" "struct_specifier" "enum_specifier" "for_range_loop" "class_specifier" "linkage_specification" "switch_statement" "case_statement")

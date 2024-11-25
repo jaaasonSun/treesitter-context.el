@@ -89,11 +89,10 @@ The car of the pair is context, and the cdr is context.end."
 
 (defun treesitter-context--indent-context (context level offset)
   (let ((lines (string-split context "\n" t))
-        (indentation (make-string (* level offset) ?\s))
         result)
     (cl-dolist (line lines)
       (when (length> (string-trim line) 0)
-        (cl-pushnew (concat indentation line "\n") result)))
+        (cl-pushnew (concat line "\n") result)))
     (nreverse result)))
 
 ;; not used yet
@@ -127,7 +126,7 @@ The car of the pair is context, and the cdr is context.end."
   "Collect all of current node's parent nodes with node-type in NODE-TYPES.
 Use QUERY-PATTERNS to capture potential nodes.
 Each node is indented according to INDENT-OFFSET."
-  (let* ((point (window-start))
+  (let* ((point (save-excursion (goto-char (window-start)) (line-end-position)))
          (current-line 0)
          (line-count 0)
          contexts)
@@ -136,53 +135,46 @@ Each node is indented according to INDENT-OFFSET."
             line-count 0)
       (let* ((parents (treesitter-context--parent-nodes node-types point))
              (root (nth 0 parents))
-             root-start
              groups
-             node-pairs
-             context)
+             node-pairs)
         (when root
-          (setq treesitter-context--indent-level 0)
-          (setq root-start (treesit-node-start root))
-          (when (or treesitter-context-show-context-always
-                    (> (window-start) root-start))
-            (setq groups (treesitter-context--capture root query-patterns (treesit-node-start root) (1+ (point))))
-            (when groups
-              (setq node-pairs (seq-filter (lambda (group) (member (cdr (nth 0 group)) parents)) groups))
-              (when node-pairs
-                (let (context
-                      context.real
-                      len
-                      start-pos
-                      end-pos
-                      visible-pos
-                      line-no
-                      (old-line-no -1)
-                      ctx-string)
-                  (save-excursion
-                    (save-restriction
-                      (widen)
-                      (cl-dolist (np node-pairs)
-                        (setq len (length np))
-                        (setq context (cdr (nth 0 np))
-                              start-pos (treesit-node-start context)
-                              line-no (line-number-at-pos start-pos))
-                        (cond
-                         ((or (= len 1) (= len 2))
-                          (save-excursion (goto-char start-pos) (setq start-pos (line-beginning-position)) (setq end-pos (line-end-position))))
-                         ((= len 3)
-                          (setq context.real (cdr (nth 1 np))
-                                context context.real
-                                end-pos (treesit-node-start context))
-                          (save-excursion (goto-char end-pos) (setq start-pos (line-beginning-position))
-                                          (goto-char end-pos) (setq end-pos (line-end-position)))))
-                        (setq visible-pos (save-excursion (goto-char point) (forward-line) (point)))
-                        (unless (or (>= start-pos visible-pos) (eq old-line-no line-no))
-                          (setq ctx-string (buffer-substring start-pos end-pos))
-                          (setq line-count (+ line-count (length (split-string ctx-string "\n"))))
-                          (cl-pushnew (cons line-no (treesitter-context-indent-context context ctx-string treesitter-context--indent-level indent-offset)) contexts)
-                          (setq old-line-no line-no))
-                        )))))))))
-      (setq point (save-excursion (goto-char point) (forward-line) (point)))
+          (setq groups (treesitter-context--capture root query-patterns (treesit-node-start root) (1+ (point))))
+          (when groups
+            (setq node-pairs (seq-filter (lambda (group) (member (cdr (nth 0 group)) parents)) groups))
+            (when node-pairs
+              (let (context
+                    context.real
+                    len
+                    start-pos
+                    end-pos
+                    (visible-pos (save-excursion (goto-char point) (forward-line) (line-beginning-position)))
+                    line-no
+                    (old-line-no -1)
+                    ctx-string)
+                (save-excursion
+                  (save-restriction
+                    (widen)
+                    (cl-dolist (np node-pairs)
+                      (setq len (length np))
+                      (setq context (cdr (nth 0 np))
+                            start-pos (treesit-node-start context))
+                      (cond
+                       ((or (= len 1) (= len 2))
+                        (save-excursion (goto-char start-pos) (setq start-pos (line-beginning-position)) (setq end-pos (line-end-position))))
+                       ((= len 3)
+                        (setq context.real (cdr (nth 1 np))
+                              context context.real
+                              end-pos (treesit-node-start context))
+                        (save-excursion (goto-char end-pos) (setq start-pos (line-beginning-position))
+                                        (goto-char end-pos) (setq end-pos (line-end-position)))))
+                      (setq line-no (line-number-at-pos start-pos))
+                      (unless (or (>= start-pos visible-pos) (eq old-line-no line-no))
+                        (setq ctx-string (buffer-substring start-pos end-pos))
+                        (setq line-count (+ line-count (length (split-string ctx-string "\n"))))
+                        (cl-pushnew (cons line-no (treesitter-context-indent-context context ctx-string 0 indent-offset)) contexts)
+                        (setq old-line-no line-no))
+                      ))))))))
+      (setq point (save-excursion (goto-char point) (forward-line) (line-end-position)))
       (setq current-line (1+ current-line)))
     (nreverse contexts)))
 
