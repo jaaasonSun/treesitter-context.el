@@ -1,24 +1,24 @@
-;;; treesitter-context-common.el --- Show context information around current point -*- lexical-binding: t; -*-
+;;; treesit-stickyscroll-common.el --- Show context information around current point -*- lexical-binding: t; -*-
 
 (require 'treesit)
 (require 'cl-generic)
 (require 'cl-lib)
 (require 'seq)
 
-(defvar treesitter-context--supported-mode nil
-  "Major modes that are support by `treesitter-context-mode'.")
+(defvar treesit-stickyscroll--supported-mode nil
+  "Major modes that are support by `treesit-stickyscroll-mode'.")
 
-(defvar treesitter-context--fold-supported-mode nil
-  "Major modes that are support by `treesitter-context-fold-mode'.")
+(defvar treesit-stickyscroll--fold-supported-mode nil
+  "Major modes that are support by `treesit-stickyscroll-fold-mode'.")
 
-(defvar treesitter-context--focus-supported-mode nil
-  "Major modes that are support by `treesitter-context-focus-mode'.")
+(defvar treesit-stickyscroll--focus-supported-mode nil
+  "Major modes that are support by `treesit-stickyscroll-focus-mode'.")
 
-(defvar treesitter-context--which-func-supported-mode nil
-  "Major modes that are support by treesitter-context which-func.")
+(defvar treesit-stickyscroll--which-func-supported-mode nil
+  "Major modes that are support by treesit-stickyscroll which-func.")
 
 ;;; general
-(defun treesitter-context--color-blend (c1 c2 alpha)
+(defun treesit-stickyscroll--color-blend (c1 c2 alpha)
   "Blend two colors C1 and C2 with ALPHA. C1 and C2 are hexidecimal strings.
 ALPHA is a number between 0.0 and 1.0 which corresponds to the influence of C1 on the result."
   (apply #'(lambda (r g b)
@@ -31,10 +31,10 @@ ALPHA is a number between 0.0 and 1.0 which corresponds to the influence of C1 o
             (round (+ (* x alpha) (* y (- 1 alpha)))))
           (color-values c1) (color-values c2))))
 
-(defun treesitter-context--parent-nodes (node-types point)
+(defun treesit-stickyscroll--parent-nodes (node-types point)
   "Get the parent nodes whose node type is in NODE-TYPES from POINT."
   (unless (or (minibufferp)
-              (equal (buffer-name) treesitter-context--buffer-name))
+              (equal (buffer-name) treesit-stickyscroll--buffer-name))
     (ignore-errors
       (let ((node (treesit-node-at point))
             node-type parents)
@@ -46,7 +46,7 @@ ALPHA is a number between 0.0 and 1.0 which corresponds to the influence of C1 o
         parents))))
 
 ;;; context
-(defun treesitter-context--capture (node query &optional beg end node-only)
+(defun treesit-stickyscroll--capture (node query &optional beg end node-only)
   "Capture nodes and return them as a pair.
 The car of the pair is context, and the cdr is context.end."
   (let (captures
@@ -87,7 +87,7 @@ The car of the pair is context, and the cdr is context.end."
       (setq result (nreverse result)))
     result))
 
-(defun treesitter-context--indent-context (context level offset)
+(defun treesit-stickyscroll-indent-context (context)
   (let ((lines (string-split context "\n" t))
         result)
     (cl-dolist (line lines)
@@ -96,7 +96,7 @@ The car of the pair is context, and the cdr is context.end."
     (nreverse result)))
 
 ;; not used yet
-(defun treesitter-context--cut-context (beg end)
+(defun treesit-stickyscroll--cut-context (beg end)
   (let ((beg-line-no (line-number-at-pos beg))
         (end-line-no (line-number-at-pos end))
         (first-indent 0)
@@ -122,7 +122,7 @@ The car of the pair is context, and the cdr is context.end."
             (push (buffer-substring (line-beginning-position) end) lines))
           (mapconcat #'identity (nreverse lines) "\n"))))))
 
-(defun treesitter-context-collect-contexts-base (node-types query-patterns indent-offset)
+(defun treesit-stickyscroll-collect-contexts-base (node-types query-patterns)
   "Collect all of current node's parent nodes with node-type in NODE-TYPES.
 Use QUERY-PATTERNS to capture potential nodes.
 Each node is indented according to INDENT-OFFSET."
@@ -133,12 +133,12 @@ Each node is indented according to INDENT-OFFSET."
     (while (and (< current-line 10) (not (< line-count current-line)))
       (setq contexts nil
             line-count 0)
-      (let* ((parents (treesitter-context--parent-nodes node-types point))
+      (let* ((parents (treesit-stickyscroll--parent-nodes node-types point))
              (root (nth 0 parents))
              groups
              node-pairs)
         (when root
-          (setq groups (treesitter-context--capture root query-patterns (treesit-node-start root) (1+ (point))))
+          (setq groups (treesit-stickyscroll--capture root query-patterns (treesit-node-start root) (1+ (point))))
           (when groups
             (setq node-pairs (seq-filter (lambda (group) (member (cdr (nth 0 group)) parents)) groups))
             (when node-pairs
@@ -171,23 +171,19 @@ Each node is indented according to INDENT-OFFSET."
                       (unless (or (>= start-pos visible-pos) (eq old-line-no line-no))
                         (setq ctx-string (buffer-substring start-pos end-pos))
                         (setq line-count (+ line-count (length (split-string ctx-string "\n"))))
-                        (cl-pushnew (cons line-no (treesitter-context-indent-context context ctx-string 0 indent-offset)) contexts)
+                        (cl-pushnew (cons line-no (treesit-stickyscroll-indent-context ctx-string)) contexts)
                         (setq old-line-no line-no))
                       ))))))))
       (setq point (save-excursion (goto-char point) (forward-line) (line-end-position)))
       (setq current-line (1+ current-line)))
     (nreverse contexts)))
 
-(cl-defgeneric treesitter-context-collect-contexts ()
+(cl-defgeneric treesit-stickyscroll-collect-contexts ()
   "Collect all of current node's parent nodes."
-  (user-error "%s is not supported by treesitter-context." major-mode))
-
-(cl-defgeneric treesitter-context-indent-context (node context indent-level indent-offset)
-  (treesitter-context--indent-context context indent-level indent-offset))
-
+  (user-error "%s is not supported by treesit-stickyscroll." major-mode))
 
 ;;; focus
-(defun treesitter-context--focus-bounds (node-types)
+(defun treesit-stickyscroll--focus-bounds (node-types)
   (let ((node (treesit-node-at (point)))
         result
         (begin (point-min))
@@ -205,12 +201,12 @@ Each node is indented according to INDENT-OFFSET."
         (list node begin end)
       (list (treesit-buffer-root-node) begin end))))
 
-(cl-defgeneric treesitter-context-focus-bounds ()
+(cl-defgeneric treesit-stickyscroll-focus-bounds ()
   "Return the bound that should be focused."
-  (user-error "%s is not supported by treesitter-context-focus." major-mode))
+  (user-error "%s is not supported by treesit-stickyscroll-focus." major-mode))
 
 ;;; fold
-(defun treesitter-context-fold--get-region-base (node-types)
+(defun treesit-stickyscroll-fold--get-region-base (node-types)
   "Get current code node's region."
   (let ((node (treesit-node-at (point)))
         (node-type)
@@ -240,8 +236,8 @@ Each node is indented according to INDENT-OFFSET."
       (message "No code region to fold.")
       nil)))
 
-(cl-defgeneric treesitter-context-fold-get-region ()
+(cl-defgeneric treesit-stickyscroll-fold-get-region ()
   "Get current code node's region."
-  (user-error "%s is not supported by treesitter-context-fold." major-mode))
+  (user-error "%s is not supported by treesit-stickyscroll-fold." major-mode))
 
-(provide 'treesitter-context-common)
+(provide 'treesit-stickyscroll-common)
