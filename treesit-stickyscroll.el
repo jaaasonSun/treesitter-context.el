@@ -33,14 +33,14 @@
   :group 'treesit
   :version "28.2")
 
-(defcustom treesit-stickyscroll-idle-time 2.0
+(defcustom treesit-stickyscroll-idle-time 0
   "How many seconds to wait before refreshing context information."
   :version "29.1"
   :type 'float
   :safe 'floatp
   :group 'treesit-stickyscroll)
 
-(defcustom treesit-stickyscroll-frame-autohide-timeout 15
+(defcustom treesit-stickyscroll-frame-autohide-timeout 0
   "Child frame will hide itself after this seconds."
   :version "29.1"
   :type 'integer
